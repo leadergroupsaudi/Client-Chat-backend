@@ -29,6 +29,12 @@ def create_widget_settings(db: Session, widget_settings: WidgetSettingsCreate):
     widget_settings_data = widget_settings.model_dump()
     widget_settings_data["livekit_url"] = settings.LIVEKIT_URL
     widget_settings_data["frontend_url"] = settings.FRONTEND_URL
+    
+    # These fields are not part of the WidgetSettings model, so remove them
+    widget_settings_data.pop("voice_id", None)
+    widget_settings_data.pop("stt_provider", None)
+    widget_settings_data.pop("tts_provider", None)
+    
     db_widget_settings = WidgetSettings(**widget_settings_data)
     db.add(db_widget_settings)
     db.commit()
@@ -39,6 +45,12 @@ def update_widget_settings(db: Session, agent_id: int, widget_settings: WidgetSe
     db_widget_settings = get_widget_settings(db, agent_id)
     if db_widget_settings:
         update_data = widget_settings.model_dump(exclude_unset=True)
+
+        # These fields are not part of the WidgetSettings model, so remove them
+        update_data.pop("voice_id", None)
+        update_data.pop("stt_provider", None)
+        update_data.pop("tts_provider", None)
+
         for key, value in update_data.items():
             setattr(db_widget_settings, key, value)
         db.commit()

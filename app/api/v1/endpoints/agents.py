@@ -40,11 +40,20 @@ def publish_agent_settings(
 def create_agent(agent: schemas_agent.AgentCreate, db: Session = Depends(get_db), current_user: models_user.User = Depends(get_current_active_user)):
     return agent_service.create_agent(db=db, agent=agent, company_id=current_user.company_id)
 
-@router.get("/", response_model=List[schemas_agent.Agent], dependencies=[Depends(require_permission("agent:read"))])
+@router.get("", response_model=List[schemas_agent.Agent], dependencies=[Depends(require_permission("agent:read"))])
 def read_agents(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models_user.User = Depends(get_current_active_user)):
     # Only return active agents by default, or all if a query parameter is set
     agents = agent_service.get_agents(db, company_id=current_user.company_id, skip=skip, limit=limit)
     return agents
+
+router.add_api_route(
+    "/",
+    read_agents,
+    response_model=List[schemas_agent.Agent],
+    dependencies=[Depends(require_permission("agent:read"))],
+    methods=["GET"],
+    include_in_schema=False  # To avoid duplicate entries in the OpenAPI schema
+)
 
 @router.get("/{agent_id}", response_model=schemas_agent.Agent, dependencies=[Depends(require_permission("agent:read"))])
 def read_agent(agent_id: int, db: Session = Depends(get_db), current_user: models_user.User = Depends(get_current_active_user)):
