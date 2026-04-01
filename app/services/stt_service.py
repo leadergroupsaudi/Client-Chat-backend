@@ -1,19 +1,19 @@
 from fastapi import WebSocket, UploadFile
 import aiohttp
-import os
 import asyncio
 from typing import Literal
+from app.core.config import settings
 
 # Deepgram configuration
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-DEEPGRAM_URL = "https://api.deepgram.com/v1/listen?model=nova-2&interim_results=true&endpointing=200"
+DEEPGRAM_API_KEY = settings.DEEPGRAM_API_KEY
+DEEPGRAM_URL = "wss://api.deepgram.com/v1/listen?model=nova-2&interim_results=true&utterance_end_ms=1000&vad_events=true&keepalive=true"
 
 # Groq configuration
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = settings.GROQ_API_KEY
 GROQ_API_URL = "https://api.groq.com/openai/v1/audio"
 
 # OpenAI configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = settings.OPENAI_API_KEY
 OPENAI_API_URL = "https://api.openai.com/v1/audio"
 
 
@@ -124,19 +124,37 @@ class STTService:
         self.websocket = websocket
         self.session = aiohttp.ClientSession()
         self.deepgram_ws = None
+        self.keepalive_task = None
         # Use provided API key, fallback to environment variable
         self.api_key = api_key or DEEPGRAM_API_KEY
 
     async def connect(self):
         try:
+            if not getattr(self, 'session', None) or self.session.closed:
+                self.session = aiohttp.ClientSession()
+
             self.deepgram_ws = await self.session.ws_connect(
                 DEEPGRAM_URL,
                 headers={"Authorization": f"Token {self.api_key}"}
             )
+
+            # Start a background task to send KeepAlive messages
+            self.keepalive_task = asyncio.create_task(self._keepalive_loop())
+
             return True
         except Exception as e:
             print(f"Error connecting to Deepgram: {e}")
             return False
+
+    async def _keepalive_loop(self):
+        while self.deepgram_ws and not self.deepgram_ws.closed:
+            try:
+                await asyncio.sleep(5)
+                if self.deepgram_ws and not self.deepgram_ws.closed:
+                    await self.deepgram_ws.send_json({"type": "KeepAlive"})
+            except Exception as e:
+                print(f"Error sending Deepgram KeepAlive: {e}")
+                break
 
     async def stream(self):
         """

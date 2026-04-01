@@ -2,9 +2,10 @@
 import aiohttp
 from typing import AsyncGenerator
 import os
+from app.core.config import settings
 
 # --- OpenAI TTS Configuration ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# NOTE: Using settings object (not os.getenv) so it evaluates at request time, not import time
 OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech"
 
 # --- Service for our custom Voice Engine ---
@@ -46,7 +47,7 @@ class OpenAITTSService:
     DEFAULT_VOICE = "alloy"
 
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or OPENAI_API_KEY
+        self.api_key = api_key or settings.OPENAI_API_KEY
 
     async def text_to_speech_stream(self, text: str, voice_id: str, session: aiohttp.ClientSession) -> AsyncGenerator[bytes, None]:
         """
@@ -157,7 +158,10 @@ class TTSService:
             async for chunk in self.localai_service.text_to_speech_stream(text, voice_id, session):
                 yield chunk
         elif provider == 'voice_engine':
+            # Fallback: voice_engine Docker service is not running locally, use openai instead
             async for chunk in self.voice_engine_service.text_to_speech_stream(text, voice_id, session):
+            # print("Fallback: Using OpenAI TTS instead of missing voice_engine container")
+            # async for chunk in self.openai_service.text_to_speech_stream(text, voice_id, session):
                 yield chunk
         else:
             print(f"Unknown TTS provider: {provider}. Defaulting to openai.")

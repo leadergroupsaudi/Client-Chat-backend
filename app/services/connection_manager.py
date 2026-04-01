@@ -69,11 +69,12 @@ class ConnectionManager:
 
             # Clean up dead connections after iteration
             for failed_conn in failed_connections:
-                try:
-                    self.active_connections[session_id].remove(failed_conn)
-                    print(f"[ConnectionManager] 🗑️ Removed dead connection from session {session_id}")
-                except ValueError:
-                    pass  # Already removed
+                if session_id in self.active_connections:
+                    try:
+                        self.active_connections[session_id].remove(failed_conn)
+                        print(f"[ConnectionManager] 🗑️ Removed dead connection from session {session_id}")
+                    except ValueError:
+                        pass  # Already removed
 
             # Clean up empty session
             if session_id in self.active_connections and not self.active_connections[session_id]:
@@ -103,11 +104,12 @@ class ConnectionManager:
 
             # Clean up dead connections after iteration
             for failed_conn in failed_connections:
-                try:
-                    self.active_connections[channel_id].remove(failed_conn)
-                    print(f"[broadcast] 🗑️ Removed dead connection for {failed_conn['user_type']}")
-                except ValueError:
-                    pass  # Already removed
+                if channel_id in self.active_connections:
+                    try:
+                        self.active_connections[channel_id].remove(failed_conn)
+                        print(f"[broadcast] 🗑️ Removed dead connection for {failed_conn['user_type']}")
+                    except ValueError:
+                        pass  # Already removed
 
             # Clean up empty channel
             if channel_id in self.active_connections and not self.active_connections[channel_id]:
@@ -141,11 +143,12 @@ class ConnectionManager:
 
             # Clean up dead connections after iteration
             for failed_conn in failed_connections:
-                try:
-                    self.active_connections[session_id].remove(failed_conn)
-                    print(f"[broadcast_bytes_to_session] Removed dead voice connection from session {session_id}")
-                except ValueError:
-                    pass
+                if session_id in self.active_connections:
+                    try:
+                        self.active_connections[session_id].remove(failed_conn)
+                        print(f"[broadcast_bytes_to_session] Removed dead voice connection from session {session_id}")
+                    except ValueError:
+                        pass
         else:
             print(f"[broadcast_bytes_to_session] No active connections for session {session_id}")
 

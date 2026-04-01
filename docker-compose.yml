@@ -82,20 +82,20 @@ services:
   #   restart: always
 
   # Documentation Service - Docusaurus
-  docs:
-    build:
-      context: ../docs
-      dockerfile: Dockerfile
-      target: development  # Use 'production' for prod deployment
-    container_name: agentconnect_docs
-    ports:
-      - "3001:3000"  # Dev server on port 3001
-    volumes:
-      - ../docs:/app  # Mount docs folder for hot reload
-      - /app/node_modules  # Prevent overwriting node_modules
-    environment:
-      - NODE_ENV=development
-    restart: unless-stopped
+  # docs:
+  #   build:
+  #     context: ../docs
+  #     dockerfile: Dockerfile
+  #     target: development  # Use 'production' for prod deployment
+  #   container_name: agentconnect_docs
+  #   ports:
+  #     - "3001:3000"  # Dev server on port 3001
+  #   volumes:
+  #     - ../docs:/app  # Mount docs folder for hot reload
+  #     - /app/node_modules  # Prevent overwriting node_modules
+  #   environment:
+  #     - NODE_ENV=development
+  #   restart: unless-stopped
     # For production, uncomment below and comment above:
     # docs-prod:
     #   build:

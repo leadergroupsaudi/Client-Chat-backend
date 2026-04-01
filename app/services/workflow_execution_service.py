@@ -2053,7 +2053,7 @@ Return only valid JSON, nothing else:"""
         executing_agent_id = agent_id
         if agent_id:
             from app.services import agent_service
-            executing_agent = agent_service.get_agent(self.db, agent_id)
+            executing_agent = agent_service.get_agent(self.db, agent_id, workflow_obj.company_id)
         elif hasattr(workflow_obj, 'agents') and workflow_obj.agents:
             executing_agent = workflow_obj.agents[0]
             executing_agent_id = executing_agent.id
@@ -2983,7 +2983,16 @@ Return only valid JSON, nothing else:"""
         context['last_workflow_id'] = workflow_obj.id
 
         # Clean up any extraction-related markers from context and memory so they don't interfere with future runs
-        extraction_markers = ['_extracting_entity_name', '_missing_entities', '_extraction_attempts', 'variable_to_save']
+        extraction_markers = [
+            '_extracting_entity_name', '_missing_entities', '_extraction_attempts',
+            'variable_to_save', 'expected_input_type',
+            'pending_prompt_options', 'pending_allow_text_input', 'pending_validation_mode',
+            'pending_validation_llm_provider', 'pending_validation_llm_model', 'pending_prompt_text',
+            '_validation_max_retries', '_validation_retry_count',
+            'pending_listen_validation_mode', 'pending_listen_validation_llm_provider',
+            'pending_listen_validation_llm_model', 'pending_question_text',
+            '_listen_validation_max_retries', '_listen_validation_retry_count',
+        ]
         for marker in extraction_markers:
             context.pop(marker, None)
             # Also delete from memory service
@@ -2993,6 +3002,17 @@ Return only valid JSON, nothing else:"""
             except:
                 pass  # Marker might not exist in memory
         print(f"DEBUG: Cleaned up extraction markers from context and memory on workflow completion")
+
+        # Reset context to a clean slate - only retain workflow completion bookkeeping metadata.
+        # All user-collected variables (e.g. user_name), internal state keys (_last_agent_message,
+        # initial_user_message, user_attachments, etc.) must be discarded so the next workflow
+        # starts completely fresh and does not pick up stale data from the finished run.
+        clean_context = {
+            'last_workflow_completed_at': context.get('last_workflow_completed_at'),
+            'last_workflow_id': context.get('last_workflow_id'),
+        }
+        context = clean_context
+        print(f"DEBUG: Reset session context to clean slate after workflow completion")
 
         # Update session context
         session_update = ConversationSessionUpdate(status='active', context=context, subworkflow_stack=None)

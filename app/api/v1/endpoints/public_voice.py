@@ -49,7 +49,7 @@ async def public_voice_websocket_endpoint(
     logger.info(f"Agent credential object: {agent.credential}")
 
     final_voice_id = voice_id
-    tts_provider = 'voice_engine' # Default provider
+    tts_provider = 'openai' # Default to openai since voice_engine container is not running locally
     stt_provider = 'openai'
     if agent:
         if agent.voice_id:
@@ -68,6 +68,21 @@ async def public_voice_websocket_endpoint(
 
     await manager.connect(websocket, session_id, user_type, connection_type="voice")
     logger.info(f"WebSocket connected to manager for session {session_id} (voice connection)")
+
+    # Ensure the database session exists so chat_service.create_chat_message doesn't raise 'Session not found'
+    try:
+        session_obj = conversation_session_service.get_or_create_session(
+            db,
+            conversation_id=session_id,
+            workflow_id=None,
+            contact_id=None,
+            channel="voice",
+            company_id=company_id,
+            agent_id=agent_id
+        )
+        logger.info(f"Verified/Created conversation session {session_id} in database")
+    except Exception as e:
+        logger.error(f"Error creating conversation session in DB: {e}")
 
     # Get OpenAI API key from vault if available (used for both STT and TTS)
     openai_api_key = None
@@ -171,33 +186,40 @@ async def public_voice_websocket_endpoint(
     async def handle_transcription():
         logger.info("Starting transcription handler")
         if stt_provider == "deepgram":
-            if await stt_service.connect():
-                while True:
-                    try:
-                        # Use receive() to handle all message types (text, binary, close, etc.)
+            # Keep reconnecting as long as the session is alive
+            while True:
+                connected = await stt_service.connect()
+                if not connected:
+                    logger.error("Failed to connect to Deepgram, stopping transcription handler")
+                    break
+                logger.info("Deepgram connected, listening for transcripts...")
+                try:
+                    while True:
                         msg = await stt_service.deepgram_ws.receive()
 
-                        # Handle close frames gracefully
                         if msg.type == aiohttp.WSMsgType.CLOSED:
-                            logger.info("Deepgram WebSocket closed normally")
-                            break
+                            logger.info("Deepgram WebSocket closed, reconnecting...")
+                            break  # Inner break → reconnect via outer while True
                         elif msg.type == aiohttp.WSMsgType.ERROR:
-                            logger.error(f"Deepgram WebSocket error: {msg}")
+                            logger.error(f"Deepgram WebSocket error: {msg}, reconnecting...")
                             break
                         elif msg.type == aiohttp.WSMsgType.TEXT:
-                            # Parse JSON message
                             message = json.loads(msg.data)
-                            if message.get("type") == "Results":
+                            msg_type = message.get("type")
+                            if msg_type == "Results":
                                 transcript = message["channel"]["alternatives"][0]["transcript"]
                                 if transcript and message.get("is_final", False):
                                     await transcript_queue.put(transcript)
-                        # Ignore other message types (binary, ping, pong, etc.)
-                    except Exception as e:
-                        logger.error(f"Error receiving from STT service: {e}")
-                        break
-            await stt_service.close()
+                            elif msg_type == "UtteranceEnd":
+                                logger.debug("UtteranceEnd marker received from Deepgram")
+                except asyncio.CancelledError:
+                    logger.info("Transcription handler cancelled")
+                    await stt_service.close()
+                    return
+                except Exception as e:
+                    logger.error(f"Error in transcription loop: {e}")
+                    break
         logger.info("Transcription handler finished")
-        # Groq does not use a persistent connection for transcription
 
     async def handle_audio_from_client():
         nonlocal audio_buffer, last_audio_time, handoff_requested, handoff_data
@@ -236,13 +258,27 @@ async def public_voice_websocket_endpoint(
                         if stt_service.deepgram_ws and not stt_service.deepgram_ws.closed:
                             await stt_service.deepgram_ws.send_bytes(audio_chunk)
                         else:
-                            break
+                            # Deepgram closed — wait briefly for reconnection before dropping
+                            logger.warning("Deepgram WS closed, waiting for reconnect...")
+                            for _ in range(30):
+                                await asyncio.sleep(0.1)
+                                if stt_service.deepgram_ws and not stt_service.deepgram_ws.closed:
+                                    await stt_service.deepgram_ws.send_bytes(audio_chunk)
+                                    break
+                            else:
+                                logger.error("Deepgram failed to reconnect, dropping audio chunk")
                     elif stt_provider in ("groq", "openai"):
                         audio_buffer.extend(audio_chunk)
                         logger.info(f"[AUDIO] Buffer size now: {len(audio_buffer)} bytes")
 
         except WebSocketDisconnect:
             logger.info("Client disconnected from audio stream")
+        except RuntimeError as e:
+            if "disconnect message" in str(e):
+                # Expected: WebSocket closed while audio loop was still trying to receive
+                logger.debug(f"Audio receive loop closed after disconnect (expected): {e}")
+            else:
+                logger.error(f"Unexpected runtime error in audio handler: {e}")
         except Exception as e:
             logger.error(f"Error receiving from client: {e}")
         logger.info("Audio from client handler finished")
@@ -465,7 +501,8 @@ async def public_voice_websocket_endpoint(
                                 user_message=transcript,
                                 company_id=company_id,
                                 workflow=workflow,
-                                conversation_id=session_id
+                                conversation_id=session_id,
+                                agent_id=agent_id  # pass agent_id so messages save with correct agent association
                             )
                             if execution_result:
                                 status = execution_result.get("status")
@@ -516,10 +553,23 @@ async def public_voice_websocket_endpoint(
                         )
                     logger.info(f"LLM response: {agent_response_text}")
 
+                    # Ensure agent_response_text is always a plain string (LLM may return a dict for handoff/error)
+                    if isinstance(agent_response_text, dict):
+                        # Extract a meaningful message from handoff/error dicts
+                        agent_response_text = agent_response_text.get(
+                            "message",
+                            agent_response_text.get("reason", "I'm sorry, I'm unable to respond right now.")
+                        )
+                    elif not isinstance(agent_response_text, str):
+                        agent_response_text = str(agent_response_text) if agent_response_text else "I'm sorry, I'm unable to respond right now."
+
                     # 3. Save and broadcast the agent's text message
-                    agent_message = schemas_chat_message.ChatMessageCreate(message=agent_response_text, message_type='message')
-                    db_agent_message = chat_service.create_chat_message(db, agent_message, agent_id, session_id, company_id, "agent")
-                    await manager.broadcast_to_session(session_id, schemas_chat_message.ChatMessage.model_validate(db_agent_message).model_dump_json(), "agent")
+                    # For paused states, the workflow_execution_service already saves+broadcasts internally.
+                    # For 'completed' workflows and direct LLM responses, we handle it here.
+                    if not workflow_executed or (workflow_executed and execution_result and execution_result.get('status') == 'completed'):
+                        agent_message = schemas_chat_message.ChatMessageCreate(message=agent_response_text, message_type='message')
+                        db_agent_message = chat_service.create_chat_message(db, agent_message, agent_id, session_id, company_id, "agent")
+                        await manager.broadcast_to_session(session_id, schemas_chat_message.ChatMessage.model_validate(db_agent_message).model_dump_json(), "agent")
 
                     # 4. Convert the agent's response to speech and stream it
                     audio_stream = tts_service.text_to_speech_stream(agent_response_text, final_voice_id, tts_provider)
