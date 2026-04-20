@@ -4,9 +4,9 @@ from app.models import chat_message as models_chat_message, conversation_session
 from app.schemas import chat_message as schemas_chat_message
 from app.services import contact_service
 
-def get_sessions_with_details(db: Session, company_id: int, agent_id: int = None, status: str = None):
+def get_sessions_with_details(db: Session, company_id: int, agent_id: int = None, status: str = None, workflow_id: int = None):
     """
-    Gets all unique sessions for a company, optionally filtered by agent or status.
+    Gets all unique sessions for a company, optionally filtered by agent, status, or workflow.
     It retrieves the latest message for ordering and context.
     """
     query = db.query(models_conversation_session.ConversationSession).filter(
@@ -15,9 +15,12 @@ def get_sessions_with_details(db: Session, company_id: int, agent_id: int = None
 
     if agent_id:
         query = query.filter(models_conversation_session.ConversationSession.agent_id == agent_id)
-    
+
     if status:
         query = query.filter(models_conversation_session.ConversationSession.status == status)
+
+    if workflow_id:
+        query = query.filter(models_conversation_session.ConversationSession.workflow_id == workflow_id)
 
     # Order by the most recently updated session
     sessions = query.order_by(desc(models_conversation_session.ConversationSession.updated_at)).all()

@@ -49,8 +49,8 @@ async def public_voice_websocket_endpoint(
     logger.info(f"Agent credential object: {agent.credential}")
 
     final_voice_id = voice_id
-    tts_provider = 'voice_engine' # Default provider
-    stt_provider = 'openai' # Default provider (changed from deepgram since OpenAI is in vault)
+    tts_provider = 'openai'  # Default to OpenAI (vault credentials available)
+    stt_provider = 'openai'  # Default provider
     if agent:
         if agent.voice_id:
             final_voice_id = agent.voice_id
@@ -63,6 +63,11 @@ async def public_voice_websocket_endpoint(
     if stt_provider_param:
         stt_provider = stt_provider_param
         logger.info(f"STT provider overridden by frontend to: {stt_provider}")
+
+    # voice_engine is not deployed — fall back to openai
+    if tts_provider == 'voice_engine':
+        logger.info("TTS provider 'voice_engine' is not available, falling back to 'openai'")
+        tts_provider = 'openai'
 
     logger.info(f"STT Provider: {stt_provider}, TTS Provider: {tts_provider}, Voice ID: {final_voice_id}")
 

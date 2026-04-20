@@ -24,6 +24,7 @@ class Session(BaseModel):
     is_client_connected: Optional[bool] = False
     is_ai_enabled: Optional[bool] = True
     priority: Optional[int] = 0  # 0=None, 1=Low, 2=Medium, 3=High, 4=Urgent
+    workflow_id: Optional[int] = None
 
     class Config:
         populate_by_name = True

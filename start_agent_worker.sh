@@ -62,9 +62,9 @@ echo ""
 
 # Start the agent
 if [ "$MODE" == "dev" ]; then
-    python app/agents/voice_agent.py dev
+    python app/agents/workflow_voice_agent.py dev
 elif [ "$MODE" == "start" ]; then
-    python app/agents/voice_agent.py start
+    python app/agents/workflow_voice_agent.py start
 else
     echo "Usage: ./start_agent_worker.sh [dev|start]"
     echo "  dev   - Development mode with auto-reload"

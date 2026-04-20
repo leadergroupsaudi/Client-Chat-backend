@@ -63,6 +63,7 @@ async def read_root():
 
 from app.initial_data import create_initial_data
 from app.services.builtin_tools_service import seed_builtin_tools
+from app.services.mcp_tool_sync_service import sync_mcp_tools
 
 # Initialize scheduler for background tasks
 scheduler = AsyncIOScheduler()
@@ -91,6 +92,13 @@ async def on_startup():
     db = SessionLocal()
     try:
         seed_builtin_tools(db)
+    finally:
+        db.close()
+
+    # Sync MCP tools from Automax MCP server (non-fatal if server is offline)
+    db = SessionLocal()
+    try:
+        await sync_mcp_tools(db)
     finally:
         db.close()
 

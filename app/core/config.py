@@ -78,7 +78,7 @@ class Settings(BaseSettings):
 
     # OpenAI Realtime API Configuration
     OPENAI_REALTIME_ENABLED: bool = True  # Use OpenAI Realtime API for voice calls
-    OPENAI_REALTIME_MODEL: str = "gpt-4o-realtime-preview-2024-12-17"
+    OPENAI_REALTIME_MODEL: str = "gpt-realtime"
     OPENAI_REALTIME_VOICE: str = "alloy"  # alloy, echo, shimmer, ash, ballad, coral, sage, verse
 
     # LiveKit AI Agents Configuration

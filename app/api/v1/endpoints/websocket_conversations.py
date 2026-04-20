@@ -961,7 +961,8 @@ async def public_websocket_endpoint(
     company_id: int,
     agent_id: int,
     session_id: str,
-    user_type: str = Query(...)  # 'user' or 'agent'
+    user_type: str = Query(...),   # 'user' or 'agent'
+    channel: Optional[str] = Query(default="web"),  # preview/channel type from widget
 ):
     # Verify agent exists with temporary DB session
     with get_db_session() as db:
@@ -1057,9 +1058,36 @@ async def public_websocket_endpoint(
                 ).first()
                 is_new_session = existing_session is None
 
-                # Create session without contact for anonymous websocket conversations
-                # Contact will be created only when user provides information or via platform/LLM tools
-                session = conversation_session_service.get_or_create_session(db, conversation_id=session_id, workflow_id=None, contact_id=None, channel="web_chat", company_id=company_id, agent_id=agent_id)
+                # Resolve workflow_id from the agent's linked workflows (first one is the default).
+                # Only needed for new sessions; get_or_create_session won't overwrite an existing workflow_id.
+                agent_for_session = agent_service.get_agent(db, agent_id, company_id)
+                default_workflow_id = (
+                    agent_for_session.workflows[0].id
+                    if agent_for_session and agent_for_session.workflows
+                    else None
+                )
+
+                # Normalise the channel value coming from the widget's previewType.
+                channel_map = {
+                    "web": "web",
+                    "whatsapp": "whatsapp",
+                    "messenger": "messenger",
+                    "instagram": "instagram",
+                    "telegram": "telegram",
+                    "voice": "voice",
+                }
+                session_channel = channel_map.get(channel, "web")
+
+                # Create or fetch session — contact is set later when user provides info
+                session = conversation_session_service.get_or_create_session(
+                    db,
+                    conversation_id=session_id,
+                    workflow_id=default_workflow_id,
+                    contact_id=None,
+                    channel=session_channel,
+                    company_id=company_id,
+                    agent_id=agent_id,
+                )
 
                 # Broadcast new session creation to all company users
                 if is_new_session:

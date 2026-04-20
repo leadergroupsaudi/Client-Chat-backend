@@ -107,6 +107,7 @@ async def get_reopen_analytics(
 @router.get("/sessions", response_model=List[schemas_session.Session], dependencies=[Depends(require_permission("conversation:read"))])
 def get_all_sessions(
     status_filter: Optional[str] = None,
+    workflow_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: models_user.User = Depends(get_current_active_user)
 ):
@@ -118,10 +119,11 @@ def get_all_sessions(
       - 'open' returns: active, inactive, assigned, pending
       - 'resolved' returns: resolved, archived
       - None returns: all sessions
+    - workflow_id: Filter sessions by the workflow they are currently running
     """
     from app.services.connection_manager import manager
 
-    sessions_from_db = chat_service.get_sessions_with_details(db, company_id=current_user.company_id)
+    sessions_from_db = chat_service.get_sessions_with_details(db, company_id=current_user.company_id, workflow_id=workflow_id)
 
     # Apply status filter
     if status_filter == 'open':
@@ -146,14 +148,15 @@ def get_all_sessions(
         sessions.append(schemas_session.Session(
             session_id=s.conversation_id,
             status=s.status,
-            assignee_id=s.assignee_id,  # Use assignee_id instead of agent_id
+            assignee_id=s.assignee_id,
             last_message_timestamp=s.updated_at.isoformat(),
             first_message_content=first_message.message if first_message else "",
             channel=s.channel,
             contact_name=contact_info.name if contact_info else "Unknown",
             contact_phone=contact_info.phone_number if contact_info else None,
-            is_client_connected=real_time_connected,  # Use real-time status
-            priority=s.priority
+            is_client_connected=real_time_connected,
+            priority=s.priority,
+            workflow_id=s.workflow_id,
         ))
     return sessions
 

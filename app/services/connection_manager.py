@@ -62,7 +62,7 @@ class ConnectionManager:
             for connection in connections_to_send:
                 try:
                     await connection["websocket"].send_text(message)
-                    print(f"[ConnectionManager] Sent message to websocket: {connection["websocket"]}")
+                    # print(f"[ConnectionManager] Sent message to websocket: {connection["websocket"]}")
                 except Exception as e:
                     print(f"[ConnectionManager] Error sending message to websocket: {e}")
                     failed_connections.append(connection)
